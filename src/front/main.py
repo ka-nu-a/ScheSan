@@ -1,5 +1,4 @@
 import os
-import random
 import discord
 import datetime
 from dateutil import parser
