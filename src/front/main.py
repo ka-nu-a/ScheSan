@@ -4,13 +4,14 @@ import datetime
 from dateutil import parser
 
 MODE_LIST = {'TEST':'TEST', 'PROD':'PROD'}
-MODE = MODE_LIST['TEST']
-PREFIX = '?'
+MODE = MODE_LIST[os.environ['DISCORD_BOT_MODE']]
+PREFIX = os.environ['DISCORD_BOT_PREFIX']
 ADMIN_ID = int(os.environ['DISCORD_ADMIN_ID'])
 TOKEN = os.environ['DISCORD_BOT_TOKEN']
 
 client = discord.Client()
-OUTPUT_CHANNEL = None
+OUTPUT_CHANNEL = {}
+DEFAULT_OUTPUT_CHANNEL_NAME = {'すけさん', '募集Bot'}
 EMOJI_LIST = {1:'\U00000031\U0000fe0f\U000020e3', 2:'\U00000032\U0000fe0f\U000020e3', 3:'\U00000033\U0000fe0f\U000020e3', 4:'\U00000034\U0000fe0f\U000020e3', 5:'\U00000035\U0000fe0f\U000020e3', 6:'\U00000036\U0000fe0f\U000020e3', 7:'\U00000037\U0000fe0f\U000020e3', 8:'\U00000038\U0000fe0f\U000020e3', 9:'\U00000039\U0000fe0f\U000020e3', 10:'\U0001F51F', 'close':'\U00002705', 'chancel':'\U0000274C'}
 INDEX_LIST = {1:'①', 2:'②', 3:'③', 4:'④', 5:'⑤', 6:'⑥', 7:'⑦', 8:'⑧', 9:'⑨', 10:'⑩'}
 
@@ -28,16 +29,20 @@ class schedule:
 	fncSendMessage = None # メッセージ送信関数
 	isClosed = False # Close済みかどうか
 	
-	def __init__(self, owner, message, fncSendMsg, channel=OUTPUT_CHANNEL, limit=None, *args):
-		self.owner = owner
-		self.message = message
+	def __init__(self, message, fncSendMsg, channel=None , limit=None, *args):
+		self.owner = message.author
+		self.message = message.content
 		self.fncSendMessage = fncSendMsg
-		self.channel = channel
-		self.parse(message)
+		if channel is None:
+			self.channel = OUTPUT_CHANNEL[message.guild.id]
+		else:
+			self.channel = channel
+		self.parse(message.content[1:])
 		debug(f'owner is {self.owner}')
+		log(f'[{message.guild.name}]: create schedule [{message.channel.name}] by message.author.name')
 	
 	def parse(self, message):
-		# メッセージ内容をパースして、class内の引数に代入(initでやっているようなことをする)
+		# メッセージ内容をパースして、class内の引数に代入
 		tmpStr = message.split('\n')
 		self.message = tmpStr[0]
 		self.capa = int(tmpStr[0][tmpStr[0].find('@')+1])+1 if tmpStr[0].find('@') != -1 else 99999
@@ -83,11 +88,10 @@ class schedule:
 
 schedules = []
 
-async def createSchedule(owner, message, channel=OUTPUT_CHANNEL):
-	if OUTPUT_CHANNEL is not None:
-		debug('use advance output channel')
-		channel = OUTPUT_CHANNEL
-	schedules.append(schedule(owner, ' '.join(message[1:]), sendMessage, channel))
+async def createSchedule(message, channel=None):
+	if message.guild.id in OUTPUT_CHANNEL:
+		channel = OUTPUT_CHANNEL[message.guild.id]
+	schedules.append(schedule(message, sendMessage, channel))
 	await schedules[-1].send()
 	return ''
 
@@ -95,7 +99,7 @@ async def addReactions(message, reactions):
 	for reaction in reactions:
 		await message.add_reaction(reaction)
 
-async def sendMessage(message, channel=OUTPUT_CHANNEL, reactions=''):
+async def sendMessage(message, channel, reactions=''):
 	if message == '':
 		return
 	if channel == '':
@@ -108,7 +112,11 @@ async def sendMessage(message, channel=OUTPUT_CHANNEL, reactions=''):
 	return sendedMsg
 
 def debug(message):
-	print(message+'\n')
+	if isTestMode:
+		print(message + '\n')
+
+def log(message):
+	print(datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S') + ': '  + message + '\n')
 
 def isAdmin(author):
 	return (author.id == ADMIN_ID) or (author.top_role.permissions.administrator)
@@ -129,14 +137,18 @@ async def setOutputChannel(message):
 		channel = client.get_channel(int(message.content[3:]))
 		if(channel is None):
 			return f'ERROR: channel {message.content[3:]} is Invalid!'
-		OUTPUT_CHANNEL = channel
-		return f'Set Output Channel is {OUTPUT_CHANNEL.name}'
+		debug(f'message: {message}\nmessage.guild: {message.guild}\nmessage.guild.id: {message.guild.id}')
+		log(f'[message.guild.name]: set output channel [{channel.name}] by {message.author.name}')
+		OUTPUT_CHANNEL[message.guild.id] = channel
+		return f'Set Output Channel is {OUTPUT_CHANNEL[message.guild.id].name}'
 	else:
 		return 'ERROR: This Command can only Administrator.'
 
 @client.event
 async def on_ready():
-	print(f'Bot Booting "{MODE}" Mode...')
+	log(f'Bot Booting "{MODE}" Mode...')
+	for guild in client.guilds:
+		await on_guild_join(guild)
 
 @client.event
 async def on_message(message):
@@ -147,7 +159,7 @@ async def on_message(message):
 	
 	if message.content[0] == PREFIX:
 		COMMAND_LIST = {
-			'b': lambda m,c: createSchedule(m.author.id, c, m.channel),
+			'b': lambda m,c: createSchedule(m, m.channel),
 			'e': lambda m,c: doEval(m),
 			's': lambda m,c: setOutputChannel(m),
 	}
@@ -168,14 +180,13 @@ async def on_reaction_add(reaction, user):
 					await reaction.remove(user)
 					return
 				elif reaction.emoji == EMOJI_LIST['close']:
-					if user.id == s.owner:
+					if user.id == s.owner.id:
 						debug('close...')
 						await s.close()
 					else:
-						debug('invalid user')
 						await reaction.remove(user)
 				elif reaction.emoji == EMOJI_LIST['chancel']:
-					if user.id == s.owner:
+					if user.id == s.owner.id:
 						debug('delete...')
 						await s.chancel()
 						del s
@@ -190,5 +201,16 @@ async def on_reaction_add(reaction, user):
 		debug(f'\
 		@Reaction: {reaction}@{user}\
 		')
+
+async def on_guild_join(guild):
+	log(f'[{guild.name}]: join')
+	for channel in guild.channels:
+		for defaultChannelName in DEFAULT_OUTPUT_CHANNEL_NAME:
+			if defaultChannelName == channel.name:
+				OUTPUT_CHANNEL[guild.id] = channel
+				debug(f'set default output channel at {channel.name}')
+
+async def on_guild_channel_create(channel):
+	pass
 
 client.run(TOKEN)
