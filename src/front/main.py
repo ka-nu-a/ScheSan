@@ -6,7 +6,7 @@ from dateutil import parser
 MODE_LIST = {'TEST':'TEST', 'PROD':'PROD'}
 MODE = MODE_LIST['TEST']
 PREFIX = '?'
-ADMIN_ID = os.environ['DISCORD_ADMIN_ID']
+ADMIN_ID = int(os.environ['DISCORD_ADMIN_ID'])
 TOKEN = os.environ['DISCORD_BOT_TOKEN']
 
 client = discord.Client()
@@ -111,8 +111,8 @@ def debug(message):
 	print(message+'\n')
 
 def isAdmin(author):
-	#return (author.id == ADMIN_ID) or (author.top_role.permissions.administrator)
-	return (author.id == ADMIN_ID)
+	return (author.id == ADMIN_ID) or (author.top_role.permissions.administrator)
+	#return (author.id == ADMIN_ID)
 
 async def doEval(message):
 	debug('doEval')
