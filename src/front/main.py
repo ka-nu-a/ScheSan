@@ -112,7 +112,7 @@ async def sendMessage(message, channel, reactions=''):
 	return sendedMsg
 
 def debug(message):
-	if isTestMode:
+	if isTestMode():
 		print(message + '\n')
 
 def log(message):
