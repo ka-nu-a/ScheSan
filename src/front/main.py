@@ -157,7 +157,7 @@ async def on_message(message):
 		if command[0] in COMMAND_LIST:
 			await sendMessage(await COMMAND_LIST[command[0]](message, command), message.channel)
 		else:
-			await sendMessage('Message is ' + str(command), message.channel, reactions = [EMOJI_LIST['1'], EMOJI_LIST['2'], EMOJI_LIST['close'], EMOJI_LIST['chancel']])
+			debug(f'Invalid Message "{str(message.content)}"')
 
 @client.event
 async def on_reaction_add(reaction, user):
