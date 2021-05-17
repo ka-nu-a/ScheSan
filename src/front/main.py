@@ -11,7 +11,7 @@ TOKEN = os.environ['DISCORD_BOT_TOKEN']
 
 client = discord.Client()
 OUTPUT_CHANNEL = {}
-DEFAULT_OUTPUT_CHANNEL_NAME = {'すけさん', '募集Bot'}
+DEFAULT_OUTPUT_CHANNEL_NAME = {'すけさん', '募集Bot', '募集'}
 EMOJI_LIST = {1:'\U00000031\U0000fe0f\U000020e3', 2:'\U00000032\U0000fe0f\U000020e3', 3:'\U00000033\U0000fe0f\U000020e3', 4:'\U00000034\U0000fe0f\U000020e3', 5:'\U00000035\U0000fe0f\U000020e3', 6:'\U00000036\U0000fe0f\U000020e3', 7:'\U00000037\U0000fe0f\U000020e3', 8:'\U00000038\U0000fe0f\U000020e3', 9:'\U00000039\U0000fe0f\U000020e3', 10:'\U0001F51F', 'close':'\U00002705', 'chancel':'\U0000274C'}
 INDEX_LIST = {1:'①', 2:'②', 3:'③', 4:'④', 5:'⑤', 6:'⑥', 7:'⑦', 8:'⑧', 9:'⑨', 10:'⑩'}
 
@@ -37,9 +37,9 @@ class schedule:
 			self.channel = OUTPUT_CHANNEL[message.guild.id]
 		else:
 			self.channel = channel
-		self.parse(message.content[1:])
+		self.parse(message.content[2:])
 		debug(f'owner is {self.owner}')
-		log(f'[{message.guild.name}]: create schedule [{message.channel.name}] by message.author.name')
+		log(f'[{message.guild.name}]: create schedule [{message.channel.name}] by {message.author.name}')
 	
 	def parse(self, message):
 		# メッセージ内容をパースして、class内の引数に代入
@@ -47,12 +47,12 @@ class schedule:
 		self.message = tmpStr[0]
 		self.capa = int(tmpStr[0][tmpStr[0].find('@')+1])+1 if tmpStr[0].find('@') != -1 else 99999
 		for i,c in enumerate(tmpStr[1:],1):
-			if(c[0] == '〆'):
+			if c[0] == '〆':
 				debug('find 〆!')
 				self.limit = parser.parse(c[1:].strip(':').strip(' ').strip(':'))
 				break
 			self.message += f'\n{INDEX_LIST[i]}: {c}'
-			if(i>=10):
+			if i>=10:
 				debug('max choose')
 				break
 		debug(f'capa: {self.capa}\nmessage: {self.message}')
@@ -60,10 +60,16 @@ class schedule:
 			#self.limit = datetime.datetime.today()+datetime.timedelta(days=1)
 	
 	async def send(self):
-		if(self.capa < 1):
+		if self.capa < 1:
 			debug('ERROR: 有効な募集人数を入力してください。')
 			await self.chancel()
-		self.messageByBot = await self.fncSendMessage(self.message+f'\n\n{"〆:"+self.limit.strftime("%m/%d %H:%M") if self.limit != None else ""}', channel=self.channel, reactions = self.reactionCreater(self.message.count('\n')))
+		messageText = self.message + '\n\n'
+		if self.limit is not None:
+			debug('limit is not none.')
+			messageText += "〆:"+self.limit.strftime("%m/%d %H:%M")
+			messageText += '\n'
+		messageText += f'Owner: {self.owner.mention}'
+		self.messageByBot = await self.fncSendMessage(messageText, channel=self.channel, reactions = self.reactionCreater(self.message.count('\n')))
 	
 	def reactionCreater(self, n):
 		reactionList = []
@@ -80,6 +86,11 @@ class schedule:
 		debug('close done.')
 	
 	async def notifiction(self): # 募集完了した際に、参加者にメンション＆決定した選択肢を伝える
+		#await self.messageByBot.reply(f'{self.owner.mention}募集完了')
+		pass
+	
+	async def notifictionForOwner(self): # 募集完了した際に、オーナーに連絡
+		await self.messageByBot.reply(f'{self.owner.mention}募集完了')
 		pass
 	
 	async def chancel(self):
@@ -92,6 +103,7 @@ async def createSchedule(message, channel=None):
 	if message.guild.id in OUTPUT_CHANNEL:
 		channel = OUTPUT_CHANNEL[message.guild.id]
 	schedules.append(schedule(message, sendMessage, channel))
+	await message.delete()
 	await schedules[-1].send()
 	return ''
 
@@ -113,10 +125,10 @@ async def sendMessage(message, channel, reactions=''):
 
 def debug(message):
 	if isTestMode():
-		print(message + '\n')
+		print(str(message) + '\n')
 
 def log(message):
-	print(datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S') + ': '  + message + '\n')
+	print(datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S') + ': '  + str(message) + '\n')
 
 def isAdmin(author):
 	return (author.id == ADMIN_ID) or (author.top_role.permissions.administrator)
@@ -135,7 +147,7 @@ async def setOutputChannel(message):
 	if isAdmin(message.author):
 		global OUTPUT_CHANNEL
 		channel = client.get_channel(int(message.content[3:]))
-		if(channel is None):
+		if channel is None:
 			return f'ERROR: channel {message.content[3:]} is Invalid!'
 		debug(f'message: {message}\nmessage.guild: {message.guild}\nmessage.guild.id: {message.guild.id}')
 		log(f'[message.guild.name]: set output channel [{channel.name}] by {message.author.name}')
@@ -149,6 +161,16 @@ async def on_ready():
 	log(f'Bot Booting "{MODE}" Mode...')
 	for guild in client.guilds:
 		await on_guild_join(guild)
+
+@client.event
+async def on_raw_reaction_remove(payload):
+	debug('on_raw_reaction_remove')
+	await on_reaction_remove((await client.get_channel(payload.channel_id).fetch_message(payload.message_id)).reactions, await client.fetch_user(payload.user_id)) # なぜかon_reaction_remove(r,u)が呼ばれないので、rawから呼び出す
+
+@client.event
+async def on_reaction_remove(reaction, user):
+	debug('on_reaction_remove')
+	debug(f'{reaction.emoji} by {user.name}')
 
 @client.event
 async def on_message(message):
@@ -194,14 +216,16 @@ async def on_reaction_add(reaction, user):
 						debug('invalid user')
 						await reaction.remove(user)
 				elif reaction.count >= s.capa:
-					if reaction.emoji in EMOJI_LIST:
+					if reaction.emoji in EMOJI_LIST.values():
 						debug('Max Capa close...')
+						await s.notifictionForOwner()
 						await s.close()
 				return
 		debug(f'\
 		@Reaction: {reaction}@{user}\
 		')
 
+@client.event
 async def on_guild_join(guild):
 	log(f'[{guild.name}]: join')
 	for channel in guild.channels:
@@ -210,6 +234,7 @@ async def on_guild_join(guild):
 				OUTPUT_CHANNEL[guild.id] = channel
 				debug(f'set default output channel at {channel.name}')
 
+@client.event
 async def on_guild_channel_create(channel):
 	pass
 
